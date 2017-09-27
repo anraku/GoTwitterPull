@@ -173,6 +173,6 @@ func startTwitterStream(stopchan <-chan struct{}, votes chan<- string) <-chan st
 			}
 		}
 	}()
-	// ここに到達した場合はgoroutineが終了している
+	// goroutine終了を知らせるチャネルを返す
 	return stoppedchan
 }
