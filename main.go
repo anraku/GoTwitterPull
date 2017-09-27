@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 
+	nsq "github.com/bitly/go-nsq"
+
 	mgo "gopkg.in/mgo.v2"
 )
 
@@ -43,4 +45,24 @@ func loadOptions() ([]string, error) {
 	}
 	iter.Close()
 	return option, iter.Err()
+}
+
+func publishVotes(votes <-chan string) <-chan struct{} {
+	stopchan := make(chan struct{}, 1)
+	// NSQの接続先
+	pub, _ := nsq.NewProducer("localhost:4150", nsq.NewConfig())
+	go func() {
+		// votesにデータが送信されるまでfor文で処理がブロックされる
+		// goroutineが終了すると、ループを脱出する
+		for vote := range votes {
+			pub.Publish("votes", []byte(vote))
+		}
+		log.Println("Publisher: 停止中です")
+		pub.Stop()
+		log.Prinln("Publisher: 停止しました")
+		// goroutine内で終了時のシグナルを送信しているが、
+		// deferを使って処理を書いてもよい
+		stopchan <- struct{}{}
+	}()
+	return stopchan
 }

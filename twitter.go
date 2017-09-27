@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,7 +106,7 @@ type tweet struct {
 	Text string
 }
 
-// Twitterから受け取る投票情報をvotesチャネルに送信
+// データベースから回答情報を取得し、Twitterで検索を行う
 func readFromTwitter(votes chan<- string) {
 	// DBに格納されている投票情報を取得
 	options, err := loadOptions()
