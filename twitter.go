@@ -104,7 +104,9 @@ type tweet struct {
 	Text string
 }
 
+// Twitterから受け取る投票情報をvotesチャネルに送信
 func readFromTwitter(votes chan<- string) {
+	// DBに格納されている投票情報を取得
 	options, err := loadOptions()
 	if err != nil {
 		log.Println("選択肢の読み込みに失敗しました：", err)
@@ -122,6 +124,7 @@ func readFromTwitter(votes chan<- string) {
 		log.Println("検索のリクエストの作成に失敗しました：", err)
 		return
 	}
+	// Twitter APIへの検索リクエスト送信
 	resp, err := makeRequest(req, query)
 
 	if err != nil {
@@ -143,4 +146,33 @@ func readFromTwitter(votes chan<- string) {
 			}
 		}
 	}
+}
+
+// goroutineの中でreadFromTwitterメソッドを繰り返し呼び出す
+func startTwitterStream(stopchan <-chan struct{}, votes chan<- string) <-chan struct{} {
+	// goroutineが完全に終了したことを知らせるためのチャネル
+	stoppedchan := make(chan struct{}, 1)
+	// goroutineの中で繰り返しTwitterに問い合わせを行う
+	go func() {
+		// goroutineが終了した際、シグナルとしてからのデータをstoppedchanに送る
+		defer func() {
+			stoppedchan <- struct{}{}
+		}()
+		for {
+			select {
+			// stopchanにデータが渡された（終了を指示された）場合
+			case <-stopchan:
+				log.Println("Twitterへの問い合わせを終了します...")
+				return
+			// 一定間感覚でTwitterに投票情報を問い合わせる
+			default:
+				log.Println("Twitterに問い合わせます...")
+				readFromTwitter(votes)
+				log.Println(" (待機中) ")
+				time.Sleep(10 * time.Second) // 待機してから再接続します
+			}
+		}
+	}()
+	// ここに到達した場合はgoroutineが終了している
+	return stoppedchan
 }
