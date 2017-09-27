@@ -1,4 +1,4 @@
-package main
+package mai // stop変数の競合を防ぐためn
 
 import (
 	"log"
@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	nsq "github.com/bitly/go-nsq"
 
@@ -13,21 +14,28 @@ import (
 )
 
 func main() {
-	var stoplock sync.Mutex
+	var stoplock sync.Mutex // stop変数の競合を防ぐため
 	stop := false
+	// startTwitterStreamの終了シグナルを受信するためのチャネル
 	stopChan := make(chan struct{}, 1)
+	// プログラムが終了した時にUnixシグナルを受け取るためのチャネル
 	signalChan := make(chan os.Signal, 1)
 	go func() {
+		// Unixシグナルを受け取るまで処理をブロック
 		<-signalChan
 		stoplock.Lock()
+		// 46行目で定義されているgoroutineを終了させるためフラグを立てる
 		stop = true
 		stoplock.Unlock()
 		log.Println("停止します...")
+		// startTwitterStreamに終了させるためのシグナルを送る
 		stopChan <- struct{}{}
 		closeConn()
 	}()
+	// プログラムが終了された際、チャネルにシグナルを送る
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
+	// DBへ接続
 	if err := dialdb(); err != nil {
 		log.Faitalln("MongoDBへのダイアルに失敗しました：", err)
 	}
@@ -35,13 +43,17 @@ func main() {
 
 	// 処理を開始します
 	votes := make(chan string) // 投票結果のためのチャネル
+	// votesが受信したtweetデータをNSQにパブリッシュする
 	publisherStoppedChan := publishVotes(votes)
+	// 10秒ごとにTwitterに問い合わせ、DBの選択肢と比較、NSQにパブリッシュを行う
 	twitterStoppedChan := startTwitterStream(stopChan, votes)
 	go func() {
 		for {
+			// 1分ごとにTwitterとの接続を切る
 			time.Sleep(1 * time.Minute)
 			closeConn()
 			stoplock.Lock()
+			// プログラムが終了しているならば、forループから抜ける
 			if stop {
 				stoplock.Unlock()
 				break
