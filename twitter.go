@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -98,10 +100,12 @@ func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
 	formEnc := params.Encode()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Content-Length", strconv.Itoa(len(formEnc)))
-	req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "POST", req.URL, params))
+	//req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "POST", req.URL, params))
+	req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "GET", req.URL, params))
 	return httpClient.Do(req)
 }
 
+// Twitterのつぶやきのデータを保持する
 type tweet struct {
 	Text string
 }
@@ -114,20 +118,28 @@ func readFromTwitter(votes chan<- string) {
 		log.Println("選択肢の読み込みに失敗しました：", err)
 		return
 	}
-	u, err := url.Parse("https://stream.twitter.com/1.1/statuses/filter.json")
+	//u, err := url.Parse("https://stream.twitter.com/1.1/statuses/filter.json")
+	u, err := url.Parse("https://api.twitter.com/1.1/statuses/home_timeline.json")
 	if err != nil {
 		log.Println("URLの解析に失敗しました：", err)
 		return
 	}
 	query := make(url.Values)
 	query.Set("track", strings.Join(options, ","))
-	req, err := http.NewRequest("POST", u.String(), strings.NewReader(query.Encode()))
+	req, err := http.NewRequest("GET", u.String(), strings.NewReader(query.Encode()))
 	if err != nil {
 		log.Println("検索のリクエストの作成に失敗しました：", err)
 		return
 	}
+	// URL表示
+	log.Println("Twitterに検索をするURL：", req.URL)
 	// Twitter APIへの検索リクエスト送信
 	resp, err := makeRequest(req, query)
+	// レスポンスの中身を確認
+	b, err := ioutil.ReadAll(resp.Body)
+	if err == nil {
+		fmt.Println(string(b))
+	}
 
 	if err != nil {
 		log.Println("検索のリクエストに失敗しました", err)
@@ -141,6 +153,7 @@ func readFromTwitter(votes chan<- string) {
 		if err := decoder.Decode(&tweet); err != nil {
 			break
 		}
+		// DBから取得した選択肢と、tweetの内容を比較
 		for _, option := range options {
 			if strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(option)) {
 				log.Println("投票:", option)

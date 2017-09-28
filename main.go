@@ -1,4 +1,4 @@
-package mai // stop変数の競合を防ぐためn
+package main // stop変数の競合を防ぐため
 
 import (
 	"log"
@@ -37,7 +37,7 @@ func main() {
 
 	// DBへ接続
 	if err := dialdb(); err != nil {
-		log.Faitalln("MongoDBへのダイアルに失敗しました：", err)
+		log.Fatalln("MongoDBへのダイアルに失敗しました：", err)
 	}
 	defer closedb()
 
@@ -94,16 +94,19 @@ func loadOptions() ([]string, error) {
 	var p poll
 	for iter.Next(&p) {
 		// 検索結果を一つずつoptionsに追加する
-		options = append(options, p.Optilns...)
+		options = append(options, p.Options...)
 	}
 	iter.Close()
-	return option, iter.Err()
+	return options, iter.Err()
 }
 
 func publishVotes(votes <-chan string) <-chan struct{} {
 	stopchan := make(chan struct{}, 1)
 	// NSQの接続先
-	pub, _ := nsq.NewProducer("localhost:4150", nsq.NewConfig())
+	pub, err := nsq.NewProducer("localhost:4161", nsq.NewConfig())
+	if err != nil {
+		log.Println("NSQへの接続に失敗しました：", err)
+	}
 	go func() {
 		// votesにデータが送信されるまでfor文で処理がブロックされる
 		// goroutineが終了すると、ループを脱出する
@@ -112,7 +115,7 @@ func publishVotes(votes <-chan string) <-chan struct{} {
 		}
 		log.Println("Publisher: 停止中です")
 		pub.Stop()
-		log.Prinln("Publisher: 停止しました")
+		log.Println("Publisher: 停止しました")
 		// goroutine内で終了時のシグナルを送信しているが、
 		// deferを使って処理を書いてもよい
 		stopchan <- struct{}{}
