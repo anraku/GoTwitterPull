@@ -1,4 +1,4 @@
-package main // stop変数の競合を防ぐため
+package main
 
 import (
 	"log"
@@ -103,7 +103,7 @@ func loadOptions() ([]string, error) {
 func publishVotes(votes <-chan string) <-chan struct{} {
 	stopchan := make(chan struct{}, 1)
 	// NSQの接続先
-	pub, err := nsq.NewProducer("localhost:4161", nsq.NewConfig())
+	pub, err := nsq.NewProducer("localhost:4150", nsq.NewConfig())
 	if err != nil {
 		log.Println("NSQへの接続に失敗しました：", err)
 	}

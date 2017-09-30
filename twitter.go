@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -58,10 +56,10 @@ var (
 func setupTwitterAuth() {
 	// TwitterAPIを使うための認証情報
 	var ts struct {
-		ConsumerKey    string `env:"SP_TWITTER_KEY"`
-		ConsumerSecret string `env:"SP_TWITTER_SECRET"`
-		AccessToken    string `env:"SP_TWITTER_ACCESSTOKEN"`
-		AccessSecret   string `env:"SP_TWITTER_ACCESSSECRET"`
+		ConsumerKey    string `env:"SP_TWITTER_KEY,required"`
+		ConsumerSecret string `env:"SP_TWITTER_SECRET,required"`
+		AccessToken    string `env:"SP_TWITTER_ACCESSTOKEN,required"`
+		AccessSecret   string `env:"SP_TWITTER_ACCESSSECRET,required"`
 	}
 	// 環境変数が有効かどうかチェック
 	if err := envdecode.Decode(&ts); err != nil {
@@ -100,8 +98,10 @@ func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
 	formEnc := params.Encode()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Content-Length", strconv.Itoa(len(formEnc)))
-	//req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "POST", req.URL, params))
-	req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "GET", req.URL, params))
+	req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "POST", req.URL, params))
+	//req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "GET", req.URL, params))
+	// TEST:Requestヘッダーの中身を出力
+	log.Println("リクエストヘッダー:", req.Header)
 	return httpClient.Do(req)
 }
 
@@ -118,15 +118,15 @@ func readFromTwitter(votes chan<- string) {
 		log.Println("選択肢の読み込みに失敗しました：", err)
 		return
 	}
-	//u, err := url.Parse("https://stream.twitter.com/1.1/statuses/filter.json")
-	u, err := url.Parse("https://api.twitter.com/1.1/statuses/home_timeline.json")
+	u, err := url.Parse("https://stream.twitter.com/1.1/statuses/filter.json")
+	//u, err := url.Parse("https://api.twitter.com/1.1/statuses/home_timeline.json")
 	if err != nil {
 		log.Println("URLの解析に失敗しました：", err)
 		return
 	}
 	query := make(url.Values)
 	query.Set("track", strings.Join(options, ","))
-	req, err := http.NewRequest("GET", u.String(), strings.NewReader(query.Encode()))
+	req, err := http.NewRequest("POST", u.String(), strings.NewReader(query.Encode()))
 	if err != nil {
 		log.Println("検索のリクエストの作成に失敗しました：", err)
 		return
@@ -135,27 +135,37 @@ func readFromTwitter(votes chan<- string) {
 	log.Println("Twitterに検索をするURL：", req.URL)
 	// Twitter APIへの検索リクエスト送信
 	resp, err := makeRequest(req, query)
-	// レスポンスの中身を確認
-	b, err := ioutil.ReadAll(resp.Body)
-	if err == nil {
-		fmt.Println(string(b))
-	}
-
 	if err != nil {
 		log.Println("検索のリクエストに失敗しました", err)
 		return
 	}
+	log.Println(resp)
+
+	// レスポンスの中身を確認
+	//b, err := ioutil.ReadAll(resp.Body)
+	//if err == nil {
+	//	log.Println("レスポンスでエラーが発生：", err)
+	//}
 
 	reader = resp.Body
 	decoder := json.NewDecoder(reader)
 	for {
 		var tweet tweet
+		// MOCK
+		votes <- "win"
+		// readFromTwitterが呼ばれるたびdecoder.Decodeが呼び出され、
+		// tweetを検索できなければそのまま抜ける
 		if err := decoder.Decode(&tweet); err != nil {
+			log.Println("errがnilでないのでbreakします err：", err)
 			break
 		}
 		// DBから取得した選択肢と、tweetの内容を比較
 		for _, option := range options {
-			if strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(option)) {
+			log.Println("DBとtweetの内容を比較しています")
+			if strings.Contains(
+				strings.ToLower(tweet.Text),
+				strings.ToLower(option),
+			) {
 				log.Println("投票:", option)
 				votes <- option
 			}
